@@ -239,8 +239,9 @@ async function submitRecipe(){
         const blob=compressedPhoto instanceof File ? compressedPhoto : await(await fetch(compressedPhoto)).blob();
         const fileName=Date.now()+'_'+currentUser.id+'.jpg';
         const{error:upErr}=await sb.storage.from('recipes').upload(fileName,blob,{contentType:'image/jpeg',upsert:true});
-        if(!upErr){const{data:urlData}=sb.storage.from('recipes').getPublicUrl(fileName);photo_url=urlData.publicUrl;}
-      }catch(imgErr){console.error('Photo error:',imgErr);}
+        if(upErr){showToast('Foto error: '+upErr.message);}
+        else{const{data:urlData}=sb.storage.from('recipes').getPublicUrl(fileName);photo_url=urlData.publicUrl;showToast('📸 Foto subida OK');}
+      }catch(imgErr){showToast('Foto catch: '+(imgErr?.message||JSON.stringify(imgErr)));console.error('Photo error:',imgErr);}
     }
     const{error:insertError}=await sb.from('recipes').insert({
       name,description:desc,
