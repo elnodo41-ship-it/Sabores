@@ -212,21 +212,19 @@ function filterRecipes(){searchTerm=document.getElementById('searchInput').value
 function showFavs(){if(!currentUser){openLogin();return;}showFavOnly=true;document.querySelectorAll('.filter-pill').forEach(b=>b.classList.remove('active'));renderRecipes();document.getElementById('recipesGrid').scrollIntoView({behavior:'smooth'});showToast('❤️ Mostrando tus favoritas');}
 async function openDetail(id){const r=recipes.find(x=>x.id===id);if(!r)return;const bg=CAT_BG[r.cat]||CAT_BG.principal;const liked=myLikes.has(r.id);const diffClass=r.diff==='Fácil'?'dtag-green':r.diff==='Difícil'?'dtag-red':'badge-amber';const{data:comms}=await sb.from('comments').select('*').eq('recipe_id',id).order('created_at',{ascending:true});const commentsHTML=(comms||[]).length?(comms||[]).map(c=>`<div class="comment-item">${c.author_photo?`<img src="${c.author_photo}" alt="">`:`<div class="comment-av">${(c.author_name||'?')[0]}</div>`}<div><div class="comment-name">${c.author_name||'Anónimo'} <span>${new Date(c.created_at).toLocaleDateString('es-ES')}</span></div><div class="comment-text">${c.text}</div></div></div>`).join(''):'<p style="color:var(--muted);font-size:0.83rem">Sin comentarios aún.</p>';document.getElementById('detailContent').innerHTML=`<div class="detail-img" style="background:${bg}">${r.photo_url?`<img src="${r.photo_url}" alt="${r.name}">`:(r.emoji||'🍽️')}</div><div class="detail-body"><div class="detail-tags"><span class="dtag dtag-amber">${CAT_LABELS[r.cat]||r.cat}</span><span class="dtag ${diffClass}">${r.diff}</span></div><h2>${r.name}</h2><div class="detail-meta"><span>⏱ ${r.time}</span><span>👥 ${r.servings||'?'} pers.</span><span>❤️ ${r.likes||0}</span>${r.author_name?`<span>👨‍🍳 ${r.author_name}</span>`:''}</div><p>${r.description||''}</p><div class="detail-actions"><button class="btn btn-amber" style="border-radius:50px;padding:0.6rem 1.4rem" onclick="toggleLike('${r.id}')">${liked?'❤️ Guardada':'🤍 Guardar favorita'}</button>${r.author_id&&currentUser&&r.author_id!==currentUser.id?`<button class="btn btn-ghost" style="border:1px solid var(--border2);border-radius:50px;padding:0.6rem 1.4rem" onclick="startDM('${r.author_id}','${(r.author_name||'').replace(/'/g,"\\'")}','${r.author_photo||''}')">💬 Enviar mensaje</button>`:''}</div><div class="comments-section"><h3>Comentarios (${r.comments||0})</h3>${currentUser?`<div class="comment-input-row"><input type="text" id="cInput_${r.id}" placeholder="Escribe un comentario..." onkeydown="if(event.key==='Enter')addComment('${r.id}')"><button class="btn btn-amber" style="border-radius:50px;padding:0.5rem 1rem;font-size:0.82rem" onclick="addComment('${r.id}')">→</button></div>`:`<p style="color:var(--muted);font-size:0.82rem;margin-bottom:1rem"><a href="#" onclick="openLogin()" style="color:var(--amber)">Inicia sesión</a> para comentar.</p>`}<div>${commentsHTML}</div></div></div>`;document.getElementById('detailOverlay').classList.add('open');document.body.style.overflow='hidden';}
 async function addComment(recipeId){if(!currentUser)return;const input=document.getElementById(`cInput_${recipeId}`);const text=input.value.trim();if(!text)return;input.value='';const r=recipes.find(x=>x.id===recipeId);await sb.from('comments').insert({recipe_id:recipeId,user_id:currentUser.id,author_name:currentUser.user_metadata?.full_name||currentUser.email,author_photo:currentUser.user_metadata?.avatar_url||null,text});await sb.from('recipes').update({comments:(r?.comments||0)+1}).eq('id',recipeId);openDetail(recipeId);showToast('💬 Comentario añadido');}
-function openShareModal(){if(!currentUser){openLogin();return;}document.getElementById('photoPreview').style.display='none';document.getElementById('photoInput').value='';compressedPhoto=null;buildEmojiGrid();selectedEmoji='🍝';['rName','rDesc','rTime','rServings'].forEach(id=>document.getElementById(id).value='');document.getElementById('shareOverlay').classList.add('open');document.body.style.overflow='hidden';}
+function openShareModal(){if(!currentUser){openLogin();return;}document.getElementById('photoPreview').style.display='none';document.getElementById('photoInput').value='';compressedPhoto=null;photoFile=null;buildEmojiGrid();selectedEmoji='🍝';['rName','rDesc','rTime','rServings'].forEach(id=>document.getElementById(id).value='');document.getElementById('shareOverlay').classList.add('open');document.body.style.overflow='hidden';}
 function buildEmojiGrid(){document.getElementById('emojiGrid').innerHTML=EMOJIS.map((e,i)=>`<button class="eg-btn ${i===0?'sel':''}" onclick="selEmoji(this,'${e}')">${e}</button>`).join('');}
 function selEmoji(btn,e){document.querySelectorAll('.eg-btn').forEach(b=>b.classList.remove('sel'));btn.classList.add('sel');selectedEmoji=e;}
+let photoFile=null;
 function handlePhoto(event){
   const file=event.target.files[0];
   if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(e){
-    compressedPhoto=e.target.result;
-    const prev=document.getElementById('photoPreview');
-    prev.src=compressedPhoto;
-    prev.style.display='block';
-    showToast('\ud83d\udcf8 Foto lista');
-  };
-  reader.readAsDataURL(file);
+  photoFile=file;
+  compressedPhoto=true;
+  const prev=document.getElementById('photoPreview');
+  prev.src=URL.createObjectURL(file);
+  prev.style.display='block';
+  showToast('Foto lista');
 }
 async function submitRecipe(){
   if(!currentUser){openLogin();return;}
@@ -240,14 +238,9 @@ async function submitRecipe(){
   try{
     if(compressedPhoto){
       try{
-        const base64=compressedPhoto.split(',')[1];
-        const byteChars=atob(base64);
-        const byteArr=new Uint8Array(byteChars.length);
-        for(let i=0;i<byteChars.length;i++)byteArr[i]=byteChars.charCodeAt(i);
-        const blob=new Blob([byteArr],{type:'image/jpeg'});
         const fileName=Date.now()+'.jpg';
-        const up=await sb.storage.from('recipes').upload(fileName,blob,{contentType:'image/jpeg',upsert:true});
-        if(up.error){showToast('Foto: '+up.error.message);}
+        const up=await sb.storage.from('recipes').upload(fileName,photoFile,{contentType:photoFile.type||'image/jpeg',upsert:true});
+        if(up.error){showToast('Foto error: '+up.error.message);}
         else{photo_url=sb.storage.from('recipes').getPublicUrl(fileName).data.publicUrl;}
       }catch(fe){showToast('Foto catch: '+fe.message);}
     }
@@ -271,7 +264,7 @@ async function submitRecipe(){
     document.getElementById('rServings').value='';
     document.getElementById('photoPreview').style.display='none';
     document.getElementById('photoInput').value='';
-    compressedPhoto=null;buildEmojiGrid();selectedEmoji='\ud83c\udf5d';
+    compressedPhoto=null;photoFile=null;buildEmojiGrid();selectedEmoji='\ud83c\udf5d';
     closeOverlay('shareOverlay');
     showToast('Receta publicada!');
     await loadRecipes();
