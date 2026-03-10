@@ -226,7 +226,7 @@ async function submitRecipe(){
   btn.textContent='Publicando...';btn.disabled=true;
   let photo_url=null;
   try{
-    const{data:insertData,error:insertError}=await sb.from('recipes').insert({
+    const{data:insertData,error:insertError}=await sb.from('recipes').insert([
       name,description:desc,
       cat:document.getElementById('rCat').value,
       diff:document.getElementById('rDiff').value,
@@ -235,7 +235,7 @@ async function submitRecipe(){
       author_name:currentUser.user_metadata?.full_name||currentUser.email,
       author_photo:currentUser.user_metadata?.avatar_url||null,
       emoji:selectedEmoji,photo_url:null,likes:0,comments:0
-    }).select();
+    }]).select();
     if(insertError){showToast('Error: '+insertError.message);btn.textContent='✓ Publicar receta';btn.disabled=false;return;}
     // Upload photo if exists
     if(compressedPhoto && insertData && insertData[0]){
