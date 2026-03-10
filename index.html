@@ -224,7 +224,7 @@ function handlePhoto(event){
   const prev=document.getElementById('photoPreview');
   prev.src=URL.createObjectURL(file);
   prev.style.display='block';
-  showToast('Foto lista');
+  showToast('Foto seleccionada');
 }
 async function submitRecipe(){
   if(!currentUser){openLogin();return;}
@@ -236,19 +236,15 @@ async function submitRecipe(){
   btn.textContent='Publicando...';btn.disabled=true;
   let photo_url=null;
   try{
-    if(compressedPhoto && photoFile){
+    if(photoFile){
       try{
-        const formData=new FormData();
-        formData.append('image',photoFile);
-        const resp=await fetch('https://api.imgur.com/3/image',{
-          method:'POST',
-          headers:{'Authorization':'Client-ID 546c25a59c58ad7'},
-          body:formData
-        });
-        const imgData=await resp.json();
-        if(imgData.success){photo_url=imgData.data.link;}
-        else{showToast('Foto: '+JSON.stringify(imgData));}
-      }catch(fe){showToast('Foto catch: '+fe.message);}
+        const fd=new FormData();
+        fd.append('image',photoFile);
+        const r=await fetch('https://api.imgur.com/3/image',{method:'POST',headers:{'Authorization':'Client-ID 546c25a59c58ad7'},body:fd});
+        const d=await r.json();
+        if(d.success){photo_url=d.data.link;showToast('Foto subida!');}
+        else{showToast('Imgur: '+JSON.stringify(d.data?.error||d));}
+      }catch(fe){showToast('Foto error: '+fe.message);}
     }
     const ins=await sb.from('recipes').insert({
       name:name,description:desc,
@@ -263,16 +259,16 @@ async function submitRecipe(){
       photo_url:photo_url,
       likes:0,comments:0
     });
-    if(ins.error){showToast('Error BD: '+ins.error.message);btn.textContent='Publicar receta';btn.disabled=false;return;}
+    if(ins.error){showToast('BD error: '+ins.error.message);btn.textContent='Publicar receta';btn.disabled=false;return;}
     document.getElementById('rName').value='';
     document.getElementById('rDesc').value='';
     document.getElementById('rTime').value='';
     document.getElementById('rServings').value='';
     document.getElementById('photoPreview').style.display='none';
     document.getElementById('photoInput').value='';
-    compressedPhoto=null;photoFile=null;buildEmojiGrid();selectedEmoji='\ud83c\udf5d';
+    compressedPhoto=null;photoFile=null;buildEmojiGrid();selectedEmoji='🍝';
     closeOverlay('shareOverlay');
-    showToast('Receta publicada!');
+    showToast('🎉 Receta publicada!');
     await loadRecipes();
   }catch(e){showToast('Error: '+e.message);console.error(e);}
   btn.textContent='Publicar receta';btn.disabled=false;
