@@ -218,11 +218,15 @@ function selEmoji(btn,e){document.querySelectorAll('.eg-btn').forEach(b=>b.class
 function handlePhoto(event){
   const file=event.target.files[0];
   if(!file)return;
-  compressedPhoto=file;
-  const prev=document.getElementById('photoPreview');
-  prev.src=URL.createObjectURL(file);
-  prev.style.display='block';
-  showToast('📸 Foto lista para subir');
+  const reader=new FileReader();
+  reader.onload=function(e){
+    compressedPhoto=e.target.result;
+    const prev=document.getElementById('photoPreview');
+    prev.src=compressedPhoto;
+    prev.style.display='block';
+    showToast('\ud83d\udcf8 Foto lista');
+  };
+  reader.readAsDataURL(file);
 }
 async function submitRecipe(){
   if(!currentUser){openLogin();return;}
@@ -236,7 +240,11 @@ async function submitRecipe(){
   try{
     if(compressedPhoto){
       try{
-        const blob=compressedPhoto instanceof File ? compressedPhoto : await(await fetch(compressedPhoto)).blob();
+        const base64=compressedPhoto.split(',')[1];
+        const byteChars=atob(base64);
+        const byteArr=new Uint8Array(byteChars.length);
+        for(let i=0;i<byteChars.length;i++)byteArr[i]=byteChars.charCodeAt(i);
+        const blob=new Blob([byteArr],{type:'image/jpeg'});
         const fileName=Date.now()+'_'+currentUser.id+'.jpg';
         const{error:upErr}=await sb.storage.from('recipes').upload(fileName,blob,{contentType:'image/jpeg',upsert:true});
         if(upErr){showToast('Foto error: '+upErr.message);}
