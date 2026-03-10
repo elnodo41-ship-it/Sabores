@@ -236,12 +236,18 @@ async function submitRecipe(){
   btn.textContent='Publicando...';btn.disabled=true;
   let photo_url=null;
   try{
-    if(compressedPhoto){
+    if(compressedPhoto && photoFile){
       try{
-        const fileName=Date.now()+'.jpg';
-        const up=await sb.storage.from('recipes').upload(fileName,photoFile,{contentType:photoFile.type||'image/jpeg',upsert:true});
-        if(up.error){showToast('Foto error: '+up.error.message);}
-        else{photo_url=sb.storage.from('recipes').getPublicUrl(fileName).data.publicUrl;}
+        const formData=new FormData();
+        formData.append('image',photoFile);
+        const resp=await fetch('https://api.imgur.com/3/image',{
+          method:'POST',
+          headers:{'Authorization':'Client-ID 546c25a59c58ad7'},
+          body:formData
+        });
+        const imgData=await resp.json();
+        if(imgData.success){photo_url=imgData.data.link;}
+        else{showToast('Foto: '+JSON.stringify(imgData));}
       }catch(fe){showToast('Foto catch: '+fe.message);}
     }
     const ins=await sb.from('recipes').insert({
