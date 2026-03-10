@@ -235,8 +235,20 @@ async function submitRecipe(){
       author_name:currentUser.user_metadata?.full_name||currentUser.email,
       author_photo:currentUser.user_metadata?.avatar_url||null,
       emoji:selectedEmoji,photo_url:null,likes:0,comments:0
-    });
+    }).select();
     if(insertError){showToast('Error: '+insertError.message);btn.textContent='✓ Publicar receta';btn.disabled=false;return;}
+    // Upload photo if exists
+    if(compressedPhoto && insertData && insertData[0]){
+      try{
+        const blob=await(await fetch(compressedPhoto)).blob();
+        const fileName=insertData[0].id+'.jpg';
+        const{error:upErr}=await sb.storage.from('recipes').upload(fileName,blob,{contentType:'image/jpeg',upsert:true});
+        if(!upErr){
+          const{data:urlData}=sb.storage.from('recipes').getPublicUrl(fileName);
+          await sb.from('recipes').update({photo_url:urlData.publicUrl}).eq('id',insertData[0].id);
+        }
+      }catch(imgErr){console.error('Photo error:',imgErr);}
+    }
     ['rName','rDesc','rTime','rServings'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('photoPreview').style.display='none';
     document.getElementById('photoInput').value='';
