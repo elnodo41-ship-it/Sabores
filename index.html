@@ -53,7 +53,7 @@ header{position:sticky;top:0;z-index:500;background:rgba(13,11,8,0.93);backdrop-
 <body>
 <header>
   <div class="logo">S<em>a</em>bores</div>
-  <div class="header-search"><span>🔍</span><input type="text" id="searchInput" placeholder="Buscar recetas..." oninput="filterRecipes()"></div>
+  <div class="header-search"><span>🔍</span><input type="text" id="searchInput" placeholder="Buscar recetas..." oninput="filterRecipes()" autocomplete="off"></div>
   <div class="header-actions">
     <button class="btn btn-ghost" id="dmBtn" onclick="openDM()" style="position:relative;display:none">💬<span class="notif-dot" id="dmDot"></span></button>
     <button class="btn btn-amber" id="shareBtn" onclick="openShareModal()" style="display:none">+ Receta</button>
@@ -351,11 +351,12 @@ function renderAdminOverview(){document.getElementById('admDate').textContent=ne
 function renderAdminRecipes(){document.getElementById('admRecipesCount').textContent=`${recipes.length} recetas`;const db=d=>d==='Fácil'?'badge-green':d==='Media'?'badge-amber':'badge-red';document.getElementById('admFullTable').innerHTML=`<thead><tr><th>Receta</th><th>Cat.</th><th>Dif.</th><th>Tiempo</th><th>Autor</th><th>❤️</th><th>Acc.</th></tr></thead><tbody>${recipes.map(r=>`<tr><td style="color:var(--cream)">${r.emoji||'🍽️'} ${r.name}</td><td><span class="badge badge-amber">${r.cat}</span></td><td><span class="badge ${db(r.diff)}">${r.diff}</span></td><td>${r.time}</td><td>${r.author_name||'—'}</td><td style="color:var(--cream)">${r.likes||0}</td><td><button class="act-btn danger" onclick="adminDelete('${r.id}');renderAdminRecipes()">🗑</button></td></tr>`).join('')}</tbody>`;}
 async function renderAdminUsers(){
   const{data:profiles}=await sb.from('profiles').select('*');
-  const blocked=JSON.parse(localStorage.getItem('blockedUsers')||'[]');
+  const{data:modRows}=await sb.from('moderation').select('*').eq('reason','blocked_user').eq('status','pending');
+  const blockedIds=new Set((modRows||[]).map(m=>m.recipe_id));
   const userRecipes={};
   recipes.forEach(r=>{if(r.author_id){if(!userRecipes[r.author_id])userRecipes[r.author_id]=0;userRecipes[r.author_id]++;}});
   document.getElementById('admUsersTable').innerHTML=`<thead><tr><th>Usuario</th><th>Email</th><th>Recetas</th><th>IP</th><th>Último acceso</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${(profiles||[]).map(u=>{
-    const isBlocked=blocked.includes(u.id);
+    const isBlocked=blockedIds.has(u.id);
     const lastSeen=u.last_seen?new Date(u.last_seen).toLocaleDateString('es-ES'):'—';
     return `<tr>
       <td style="color:var(--cream)">${u.name||'—'}</td>
@@ -406,10 +407,11 @@ async function renderModUsers(){
   const t=document.getElementById('admModUsersTable');
   if(!t)return;
   const{data:profiles}=await sb.from('profiles').select('*');
-  const blocked=JSON.parse(localStorage.getItem('blockedUsers')||'[]');
+  const{data:modRows}=await sb.from('moderation').select('*').eq('status','pending');
+  const blockedIds=new Set((modRows||[]).filter(m=>m.reason==='blocked_user').map(m=>m.recipe_id));
   if(!profiles||profiles.length===0){t.innerHTML='<thead><tr><th>Usuario</th><th>Email</th><th>IP</th><th>Estado</th><th>Acciones</th></tr></thead><tbody><tr><td colspan="5" style="text-align:center;opacity:0.5">No hay usuarios</td></tr></tbody>';return;}
   t.innerHTML=`<thead><tr><th>Usuario</th><th>Email</th><th>IP</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${profiles.map(u=>{
-    const isBlocked=blocked.includes(u.id);
+    const isBlocked=blockedIds.has(u.id);
     const ip=u.last_ip||'—';
     return `<tr>
       <td style="color:var(--cream)">${u.name||'—'}</td>
@@ -424,19 +426,16 @@ async function renderModUsers(){
   }).join('')}</tbody>`;
 }
 
-function blockUser(userId, ip){
+async function blockUser(userId, ip){
   if(!confirm('¿Bloquear este usuario?'))return;
-  const blocked=JSON.parse(localStorage.getItem('blockedUsers')||'[]');
-  if(!blocked.includes(userId))blocked.push(userId);
-  localStorage.setItem('blockedUsers',JSON.stringify(blocked));
+  await sb.from('moderation').upsert({recipe_id:userId,reason:'blocked_user',status:'pending'},{onConflict:'recipe_id'});
   if(ip&&ip!=='—'&&!blockedIPs.includes(ip)){blockedIPs.push(ip);localStorage.setItem('blockedIPs',JSON.stringify(blockedIPs));}
   renderModUsers();
   showToast('Usuario bloqueado');
 }
 
-function unblockUser(userId){
-  const blocked=JSON.parse(localStorage.getItem('blockedUsers')||'[]').filter(id=>id!==userId);
-  localStorage.setItem('blockedUsers',JSON.stringify(blocked));
+async function unblockUser(userId){
+  await sb.from('moderation').delete().eq('recipe_id',userId).eq('reason','blocked_user');
   renderModUsers();
   showToast('Usuario desbloqueado');
 }
@@ -468,28 +467,24 @@ async function deleteComment(id){
 async function renderRoles(){
   const t=document.getElementById('admRolesTable');
   if(!t)return;
-  const roles=JSON.parse(localStorage.getItem('adminRoles')||'[]');
-  if(roles.length===0){t.innerHTML='<thead><tr><th>Email</th><th>Rol</th><th>Acción</th></tr></thead><tbody><tr><td colspan="3" style="text-align:center;opacity:0.5">No hay roles asignados</td></tr></tbody>';return;}
+  const{data:roles}=await sb.from('roles').select('*').order('created_at',{ascending:false});
+  if(!roles||roles.length===0){t.innerHTML='<thead><tr><th>Email</th><th>Rol</th><th>Acción</th></tr></thead><tbody><tr><td colspan="3" style="text-align:center;opacity:0.5">No hay roles asignados</td></tr></tbody>';return;}
   t.innerHTML=`<thead><tr><th>Email</th><th>Rol</th><th>Acción</th></tr></thead><tbody>${roles.map(r=>`<tr><td style="color:var(--cream)">${r.email}</td><td><span class="badge ${r.role==='admin'?'badge-amber':'badge-green'}">${r.role==='admin'?'👑 Admin':'🛡️ Moderador'}</span></td><td><button class="act-btn danger" onclick="removeRole('${r.email}')">🗑</button></td></tr>`).join('')}</tbody>`;
 }
 
-function assignRole(){
+async function assignRole(){
   const email=document.getElementById('roleEmailInput').value.trim();
   const role=document.getElementById('roleSelect').value;
   if(!email){showToast('Introduce un email');return;}
-  const roles=JSON.parse(localStorage.getItem('adminRoles')||'[]');
-  const idx=roles.findIndex(r=>r.email===email);
-  if(idx>=0)roles[idx].role=role;
-  else roles.push({email,role});
-  localStorage.setItem('adminRoles',JSON.stringify(roles));
+  const{error}=await sb.from('roles').upsert({email,role},{onConflict:'email'});
+  if(error){showToast('Error: '+error.message);return;}
   document.getElementById('roleEmailInput').value='';
   renderRoles();
   showToast('Rol asignado: '+role);
 }
 
-function removeRole(email){
-  const roles=JSON.parse(localStorage.getItem('adminRoles')||'[]').filter(r=>r.email!==email);
-  localStorage.setItem('adminRoles',JSON.stringify(roles));
+async function removeRole(email){
+  await sb.from('roles').delete().eq('email',email);
   renderRoles();
   showToast('Rol eliminado');
 }
